@@ -6,13 +6,13 @@
 
 > morph $ do x <- m  =  do x <- morph m
 >            f x           morph (f x)
-> 
+>
 > morph (return x) = return x
 
     ... which are equivalent to the following two functor laws:
 
 > morph . (f >=> g) = morph . f >=> morph . g
-> 
+>
 > morph . return = return
 
     Examples of monad morphisms include:
@@ -78,7 +78,7 @@ import qualified Control.Monad.Trans.Maybe         as M
 import qualified Control.Monad.Trans.Reader        as R
 import qualified Control.Monad.Trans.RWS.Lazy      as RWS
 import qualified Control.Monad.Trans.RWS.Strict    as RWS'
-import qualified Control.Monad.Trans.State.Lazy    as S 
+import qualified Control.Monad.Trans.State.Lazy    as S
 import qualified Control.Monad.Trans.State.Strict  as S'
 import qualified Control.Monad.Trans.Writer.Lazy   as W'
 import qualified Control.Monad.Trans.Writer.Strict as W
@@ -92,7 +92,7 @@ import Data.Functor.Identity (Identity)
 {-| A functor in the category of monads, using 'hoist' as the analog of 'fmap':
 
 > hoist (f . g) = hoist f . hoist g
-> 
+>
 > hoist id = id
 -}
 class MFunctor t where
@@ -135,9 +135,9 @@ instance MFunctor (W'.WriterT w) where
     analog of 'return' and 'embed' as the analog of ('=<<'):
 
 > embed lift = id
-> 
+>
 > embed f (lift m) = f m
-> 
+>
 > embed g (embed f t) = embed (\m -> embed g (f m)) t
 -}
 class (MFunctor t, MonadTrans t) => MMonad t where
@@ -194,7 +194,7 @@ infixl 2 <|<, |>=
 t |>= f = embed f t
 
 instance (E.Error e) => MMonad (E.ErrorT e) where
-    embed f m = E.ErrorT (do 
+    embed f m = E.ErrorT (do
         x <- E.runErrorT (f (E.runErrorT m))
         return (case x of
             Left         e  -> Left e
@@ -226,17 +226,23 @@ instance (Monoid w) => MMonad (W'.WriterT w) where
         return (a, mappend w1 w2) )
 
 {- $tutorial
-    Monad morphisms solve the common problem of fixing monadic code after the
-    fact without modifying the original source code or type signatures.  The
-    following sections illustrate various examples of transparently modifying
-    existing functions.
+    Monadic code written using a particular monad transformer stack does not
+    compose with monadic code using a different stack.
+    A monad morphism is a natural transformation between monads that can be
+    used to introduce new transforming layers to already existing monadic code
+    without changing its original form. Thus, it becomes possible to introduce
+    as many transforming layers as needed to recreate a transformer stack that
+    could be composed.
+
+    The following examples illustrate how to use monad morphisms for such
+    purposes.
 -}
 
 {- $generalize
     Imagine that some library provided the following 'S.State' code:
 
 > import Control.Monad.Trans.State
-> 
+>
 > tick :: State Int ()
 > tick = modify (+1)
 
@@ -247,7 +253,7 @@ instance (Monoid w) => MMonad (W'.WriterT w) where
 
 > tick :: (Monad m) => StateT Int m ()
 
-    ... but we would prefer not to fork upstream code if possible.  How could
+    ... but we would prefer to not modify @tick@, if possible. How can
     we generalize @tick@'s type without modifying the original code?
 
     We can solve this if we realize that 'S.State' is a type synonym for
@@ -263,23 +269,24 @@ instance (Monoid w) => MMonad (W'.WriterT w) where
     to be any monad:
 
 > import Data.Functor.Identity
-> 
+>
 > generalize :: (Monad m) => Identity a -> m a
 > generalize m = return (runIdentity m)
 
     ... which we can 'hoist' to change @tick@'s base monad:
 
 > hoist :: (Monad m, MFunctor t) => (forall a . m a -> n a) -> t m b -> t n b
-> 
+>
 > hoist generalize :: (Monad m, MFunctor t) => t Identity b -> t m b
-> 
+>
 > hoist generalize tick :: (Monad m) => StateT Int m ()
 
-    This lets us mix @tick@ alongside 'IO' using 'lift':
+    This lets us mix @tick@ alongside any other monad, such as 'IO', by using
+    'lift':
 
 > import Control.Monad.Morph
 > import Control.Monad.Trans.Class
-> 
+>
 > tock                        ::                   StateT Int IO ()
 > tock = do
 >     hoist generalize tick   :: (Monad      m) => StateT Int m  ()
@@ -297,29 +304,29 @@ Tock!
     that something is a monad morphism:
 
 > generalize (return x)
-> 
+>
 > -- Definition of 'return' for the Identity monad
 > = generalize (Identity x)
-> 
+>
 > -- Definition of 'generalize'
 > = return (runIdentity (Identity x))
-> 
+>
 > -- runIdentity (Identity x) = x
 > = return x
 
 > generalize $ do x <- m
 >                 f x
-> 
+>
 > -- Definition of (>>=) for the Identity monad
 > = generalize (f (runIdentity m))
-> 
+>
 > -- Definition of 'generalize'
 > = return (runIdentity (f (runIdentity m)))
-> 
+>
 > -- Monad law: Left identity
 > = do x <- return (runIdentity m)
 >      return (runIdentity (f x))
-> 
+>
 > -- Definition of 'generalize' in reverse
 > = do x <- generalize m
 >      generalize (f x)
@@ -333,7 +340,7 @@ Tock!
     For example, we might want to combine the following @save@ function:
 
 > import Control.Monad.Trans.Writer
-> 
+>
 > -- i.e. :: StateT Int (WriterT [Int] Identity) ()
 > save    :: StateT Int (Writer  [Int]) ()
 > save = do
@@ -354,7 +361,7 @@ Tock!
     generalizing @save@'s base monad:
 
 > import Control.Monad
-> 
+>
 > program ::                   StateT Int (WriterT [Int] IO) ()
 > program = replicateM_ 4 $ do
 >     hoist lift tock
@@ -378,7 +385,7 @@ Tock!
 > import Control.Exception
 > import Control.Monad.Trans.Class
 > import Control.Monad.Trans.Error
-> 
+>
 > check :: IO a -> ErrorT IOException IO a
 > check io = ErrorT (try io)
 
@@ -401,7 +408,7 @@ Tock!
 > hoist check
 >     :: ErrorT IOException IO a -> ErrorT IOException (ErrorT IOException IO) a
 
-    We'd prefer to 'embed' all newly generated exceptions in the existing
+    Instead, we want to 'embed' all newly generated exceptions in the existing
     'E.ErrorT' layer:
 
 > embed check :: ErrorT IOException IO a -> ErrorT IOException IO a
