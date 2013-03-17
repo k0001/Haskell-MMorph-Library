@@ -357,8 +357,27 @@ Tock!
 
     * @save@ has an 'Identity' base monad
 
-    We can mix the two by inserting a 'W.WriterT' layer for @tock@ and
-    generalizing @save@'s base monad:
+    We can use 'hoist' to add enough layers to each of these two stacks so that
+    they become compatible within a same 'program'. The following stack will
+    be enough for our purposes:
+
+> program :: StateT Int (WriterT [Int] IO) ()
+
+    First we need to insert a 'W.WriterT' layer in @tock@. Since this new layer
+    will be just below the current outermost layer ('S.StateT'), we use 'hoist'
+    just once, together with the simplest monad morphism that would 'lift' a
+    monadic action to an outer transformer layer:
+
+> hoist lift tock :: (MonadTrans t) => StateT Int (t IO) ()
+
+    Then we need to 'generalize' @save@'s base monad, but this time we need to
+    'hoist' twice because we don't want to use our monad morphism on our outer
+    transformer, but instead, on the one just below it:
+
+>  hoist (hoist generalize) save :: (Monad m) => StateT Int (WriterT [Int] m ) ()
+
+    Now the transformers stacks are compatible and can be composed. Here's our
+    full program:
 
 > import Control.Monad
 >
